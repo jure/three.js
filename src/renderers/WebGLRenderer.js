@@ -42,6 +42,7 @@ import { WebGLState } from './webgl/WebGLState.js';
 import { WebGLTextures } from './webgl/WebGLTextures.js';
 import { WebGLUniforms } from './webgl/WebGLUniforms.js';
 import { WebGLUtils } from './webgl/WebGLUtils.js';
+import { WebGLMultiview} from './webgl/WebGLMultiview';
 import { WebXRManager } from './webxr/WebXRManager.js';
 import { WebGLMaterials } from './webgl/WebGLMaterials.js';
 
@@ -269,6 +270,7 @@ function WebGLRenderer( parameters = {} ) {
 	let extensions, capabilities, state, info;
 	let properties, textures, cubemaps, cubeuvmaps, attributes, geometries, objects;
 	let programCache, materials, renderLists, renderStates, clipping, shadowMap;
+	let multiview;
 
 	let background, morphtargets, bufferRenderer, indexedBufferRenderer;
 
@@ -305,10 +307,11 @@ function WebGLRenderer( parameters = {} ) {
 		renderStates = new WebGLRenderStates( extensions, capabilities );
 		background = new WebGLBackground( _this, cubemaps, state, objects, _premultipliedAlpha );
 		shadowMap = new WebGLShadowMap( _this, objects, capabilities );
-
+		multiview = new WebGLMultiview(_this, _gl, extensions);
 		bufferRenderer = new WebGLBufferRenderer( _gl, extensions, info, capabilities );
 		indexedBufferRenderer = new WebGLIndexedBufferRenderer( _gl, extensions, info, capabilities );
 
+		
 		info.programs = programCache.programs;
 
 		_this.capabilities = capabilities;
@@ -1042,6 +1045,10 @@ function WebGLRenderer( parameters = {} ) {
 
 		if ( this.info.autoReset === true ) this.info.reset();
 
+		if (xr.enabled && multiview.isAvailable()) {
+			multiview.attachCamera(camera);
+		}
+
 		//
 
 		background.render( currentRenderList, scene );
@@ -1081,6 +1088,12 @@ function WebGLRenderer( parameters = {} ) {
 		state.buffers.color.setMask( true );
 
 		state.setPolygonOffset( false );
+
+		if ( xr.enabled ) {
+			if (multiview.isAvailable()) {
+				multiview.detachCamera( camera )
+			}
+		}
 
 		// _gl.finish();
 
@@ -1645,7 +1658,11 @@ function WebGLRenderer( parameters = {} ) {
 
 		if ( refreshProgram || _currentCamera !== camera ) {
 
-			p_uniforms.setValue( _gl, 'projectionMatrix', camera.projectionMatrix );
+			if ( program.numMultiviewViews > 0 ) {
+				multiview.updateCameraProjectionMatricesUniform( camera, p_uniforms );
+			} else {
+				p_uniforms.setValue( _gl, 'projectionMatrix', camera.projectionMatrix );
+			}
 
 			if ( capabilities.logarithmicDepthBuffer ) {
 
@@ -1707,8 +1724,11 @@ function WebGLRenderer( parameters = {} ) {
 				material.isShadowMaterial ||
 				object.isSkinnedMesh ) {
 
-				p_uniforms.setValue( _gl, 'viewMatrix', camera.matrixWorldInverse );
-
+				if (program.numMultiviewViews > 0 ) {
+					multiview.updateCameraViewMatricesUniform( camera, p_uniforms );
+				} else {
+					p_uniforms.setValue( _gl, 'viewMatrix', camera.matrixWorldInverse );
+				}
 			}
 
 		}
@@ -1797,9 +1817,18 @@ function WebGLRenderer( parameters = {} ) {
 		}
 
 		// common matrices
+		
+		if ( program.numMultiviewViews > 0 ) {
 
-		p_uniforms.setValue( _gl, 'modelViewMatrix', object.modelViewMatrix );
-		p_uniforms.setValue( _gl, 'normalMatrix', object.normalMatrix );
+			multiview.updateObjectMatricesUniforms( object, camera, p_uniforms );
+
+		} else {
+
+			p_uniforms.setValue( _gl, 'modelViewMatrix', object.modelViewMatrix );
+			p_uniforms.setValue( _gl, 'normalMatrix', object.normalMatrix );
+
+		}
+
 		p_uniforms.setValue( _gl, 'modelMatrix', object.matrixWorld );
 
 		return program;

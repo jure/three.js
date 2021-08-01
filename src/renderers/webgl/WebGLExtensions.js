@@ -54,7 +54,7 @@ function WebGLExtensions( gl ) {
 			if ( capabilities.isWebGL2 ) {
 
 				getExtension( 'EXT_color_buffer_float' );
-
+				
 			} else {
 
 				getExtension( 'WEBGL_depth_texture' );
